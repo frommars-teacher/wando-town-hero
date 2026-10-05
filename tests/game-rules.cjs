@@ -1,0 +1,7 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+const context=vm.createContext({});
+vm.runInContext(fs.readFileSync('work/wando-town-hero/game-data.js','utf8'),context);
+const code=fs.readFileSync('work/wando-town-hero/game.js','utf8');
+for(const [name,next] of [['score','finish'],['rankFor','result']])vm.runInContext('function '+code.split('function '+name+'(')[1].split('function '+next+'(')[0].replace(/^/,name+'('),context);
+const checks=vm.runInContext(`(()=>{let profiles=0;for(const q of CASES){assert(q.talk.length===3);for(let a=0;a<3;a++){assert(q.plans[a][1].length<22);assert(q.plans[a][2].length<25);assert(q.plans[a][3].length<25);const scores=q.plans[a][4];assert(!scores.every((s,i)=>s===Math.max(...q.plans.map(p=>p[4][i]))));for(let b=0;b<3;b++){const r={first:a,final:b};const out=score(q,r);assert(out.length===4&&out.every(n=>Number.isInteger(n)&&n>=0&&n<=20));assert(['S','A','B','C'].includes(rankFor(out.map(n=>n*5))));profiles++;}}assert(q.evidence[q.answer][1]===q.clue[1]);}assert(rankFor([100,100,100,50])!=='S');assert(rankFor([85,85,85,85])==='S');assert(rankFor([75,75,75,75])==='A');assert(rankFor([60,60,60,60])==='B');assert(rankFor([60,60,60,39])==='C');return profiles;})()`,Object.assign(context,{assert}));
+console.log(JSON.stringify({profiles:checks,status:'passed',checks:'문장 길이·첫 선택의 장단점·점수 범위·균형 랭크·단서 연결'}));
