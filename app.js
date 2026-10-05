@@ -1,157 +1,105 @@
-
-const STORAGE_KEY="wando_town_hero_v1";
-const defaultState={completed:{},stats:{effect:0,sustain:0,care:0,cause:0},review:{quest:"",reason:""}};
+'use strict';
+const STORAGE_KEY='wando_town_hero_v2';
+const KEYS=['effect','sustain','care','cause'];
+const PHASES=['주민 만나기','현장 체험','장단점 비교','첫 계획','자원 배분','결과와 재판단','돌아보기','완료'];
+let currentQuest=null, storageFailed=false;
+const fresh=()=>({version:2,quests:{},completed:{},active:null});
+function loadState(){try{const s=JSON.parse(localStorage.getItem(STORAGE_KEY));if(s?.version!==2)return fresh();return {...fresh(),...s,quests:s.quests||{},completed:s.completed||{}};}catch{return fresh();}}
 let state=loadState();
-let currentQuest=null;
+function $(id){return document.getElementById(id);}
+function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function save(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(state));storageFailed=false;}catch{storageFailed=true;} $('saveStatus').textContent=storageFailed?'저장 공간을 사용할 수 없어요. 이 화면을 닫기 전에 기록을 내려받아 주세요.':'✓ 자동 저장됨';}
+function shuffle(a){const r=[...a];for(let i=r.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[r[i],r[j]]=[r[j],r[i]];}return r;}
+function showScreen(id){document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));window.scrollTo({top:0,behavior:'instant'});}
+function toast(text){const x=document.createElement('div');x.className='toast';x.setAttribute('role','status');x.textContent=text;document.body.append(x);setTimeout(()=>x.remove(),2400);}
+function qstate(){return state.quests[currentQuest.id];}
+function startRecord(){return {phase:0,order:shuffle([0,1,2]),actionOrders:LESSONS[currentQuest.id].tasks.map(()=>shuffle([0,1,2])),miniOrders:LESSONS[currentQuest.id].rounds.map(()=>shuffle([0,1,2,3])),heard:[],miniRound:0,miniAnswers:{},miniAttempts:{},routes:[[],[],[]],causeOrder:[],compare:{},first:null,budget:[2,2,2],event:0,eventHeard:[],decisions:[],reflection:null,seconds:0};}
+let tick=Date.now();
+// 활동 시간은 조작 중의 실제 시간이며, 숨긴 탭과 방치한 시간은 제외합니다.
+let lastInput=Date.now();
+['pointerdown','keydown'].forEach(e=>document.addEventListener(e,()=>lastInput=Date.now()));
+setInterval(()=>{const now=Date.now();if(currentQuest&&!document.hidden&&now-lastInput<60000&&qstate().phase<7){qstate().seconds+=Math.min(5,(now-tick)/1000);save();}tick=now;},5000);
+function totals(){return KEYS.map((k,i)=>Object.values(state.completed).reduce((a,c)=>a+(c.score?.[i]||0),0));}
+function renderAll(){const t=totals();['statEffect','statSustain','statCare','statCause'].forEach((id,i)=>$(id).textContent=t[i]); const count=Object.keys(state.completed).length;
+ $('questNodes').innerHTML=QUESTS.map(q=>`<button class="quest-node ${state.completed[q.id]?'done':''}" data-quest="${q.id}" style="left:${q.pos.left};top:${q.pos.top}"><span class="icon">${q.icon}</span><strong>${q.short}</strong><small>${state.completed[q.id]?'기록 보기':state.quests[q.id]?'이어서 하기':'퀘스트 보기'}</small></button>`).join('');
+ document.querySelectorAll('[data-quest]').forEach(b=>b.onclick=()=>openQuest(b.dataset.quest));
+ $('progressText').textContent=`${count} / 5 완료`; $('resultGate').classList.toggle('locked',count<5);$('resultGate').setAttribute('aria-disabled',count<5);$('resultGate').querySelector('small').textContent=count<5?'5개 퀘스트 완료 후 열림':'최종 평가 보기';$('map').classList.toggle('renewed',count===5);
+ $('badgeList').innerHTML=QUESTS.map(q=>`<span class="badge ${state.completed[q.id]?'on':''}">${q.badge}</span>`).join('');
+}
+function openQuest(id){currentQuest=QUESTS.find(q=>q.id===id);if(!currentQuest)return;if(!state.quests[id])state.quests[id]=startRecord();state.active=id;save();showScreen('questScreen');renderQuest();}
+function advance(phase){qstate().phase=phase;save();renderQuest();}
+function button(label,attrs='',className='secondary'){return `<button class="${className}" ${attrs}>${esc(label)}</button>`;}
+function choices(options,attr,selected){const r=qstate();r.questionOrders||={};const orderKey=[r.phase,r.miniRound,r.event,r.compareIndex||0,attr].join('/');const order=r.questionOrders[orderKey]||=shuffle(options.map((_,i)=>i));return `<div class="option-row">${order.map(i=>button(options[i],`${attr}="${i}" aria-pressed="${selected===i}"`,selected===i?'secondary selected':'secondary')).join('')}</div>`;}
+function bind(selector,fn){document.querySelectorAll(selector).forEach(b=>b.onclick=()=>fn(b));}
+function shell(body){const q=currentQuest,r=qstate();$('questContent').innerHTML=`<article class="quest-card quest-${q.id}"><div class="quest-title"><div class="bigicon">${q.icon}</div><div><span class="pill">${esc(q.problem)}</span><h2 tabindex="-1" id="phaseHeading">${esc(q.title)}</h2></div></div><ol class="steps">${PHASES.slice(0,7).map((p,i)=>`<li ${i===r.phase?'aria-current="step"':''} class="${i<r.phase?'done':''}">${i+1}. ${p}</li>`).join('')}</ol>${body}</article>`; $('phaseHeading').focus({preventScroll:true});save();}
+function journal(){const r=qstate(),l=LESSONS[currentQuest.id];return `<details class="journal"><summary>📒 내 조사 기록 보기</summary>${l.rounds.map((round,i)=>`<p><b>${esc(round[0])}</b>: ${currentQuest.id==='bus'?r.routes[i].map(j=>esc(round[2][j])).join(' / '):currentQuest.id==='road'&&i===0?r.causeOrder.map(j=>esc(round[2][j])).join(' → '):round[2].map((v,j)=>`${esc(v[0])} → ${esc(l.miniOptions[r.miniAnswers[i+'-'+j]]||'미확인')}`).join('<br>')}</p>`).join('')}${(r.labs||[]).filter(l=>l.done).map((lab,i)=>`<p><b>현장 실험 ${i+1}</b>: ${lab.plans[lab.chosen].map(j=>esc(EXPERIMENTS[currentQuest.id].tasks[j][0])).join(' + ')} · ${EXPERIMENTS[currentQuest.id].metrics.map((m,j)=>esc(m)+': '+lab.results[lab.chosen][j]).join(' / ')}</p>`).join('')}<p>수정하며 다시 생각한 횟수: ${Object.values(r.miniAttempts).reduce((a,n)=>a+Math.max(0,n-1),0)}회</p></details>`;}
+function renderQuest(){const r=qstate();if(r.phase===0)intro();else if(r.phase===1)mini();else if(r.phase===2)compare();else if(r.phase===3)firstPlan();else if(r.phase===4)allocate();else if(r.phase===5)eventView();else if(r.phase===6)reflect();else completion();}
+function intro(){const r=qstate(),l=LESSONS[currentQuest.id];shell(`<div class="npc"><b>${esc(currentQuest.npc)}</b>${esc(currentQuest.dialogue)}</div><h3>세 주민은 무엇을 중요하게 생각할까요?</h3><p>주민을 눌러 이야기를 듣고, 가장 관련 있는 고민을 연결해 보세요.</p>${l.people.map((p,i)=>`<section class="resident">${button('💬 '+p[0],`data-person="${i}"`)}${r.heard.includes(i)?`<p class="bubble">${esc(p[1])}</p>${choices(l.people.map(v=>v[2]),`data-concern-${i}`,r['concern'+i])}`:''}</section>`).join('')}<p class="help">${r.heard.length}/3명 만남 · 서로 다른 입장을 모두 살펴요.</p>${button('현장 조사 시작','id="next" '+(l.people.every((p,i)=>r['concern'+i]===i)?'':'disabled'),'primary')}`);
+ bind('[data-person]',b=>{const i=+b.dataset.person;if(!r.heard.includes(i))r.heard.push(i);save();intro();});l.people.forEach((p,i)=>bind(`[data-concern-${i}]`,b=>{r['concern'+i]=+b.getAttribute(`data-concern-${i}`);save();if(r['concern'+i]!==i)toast('주민이 불편하다고 말한 부분을 다시 읽어 보세요.');intro();}));$('next').onclick=()=>advance(1);}
+function mini(){const r=qstate(),q=currentQuest,l=LESSONS[q.id],n=r.miniRound,round=l.rounds[n];if(r.labs?.[n]&&!r.labs[n].done)return fieldLab();let body=`<span class="pill">현장 ${n+1} / 3</span><h3>${esc(round[0])}</h3><p>${esc(round[1])}</p>`;
+ if(q.id==='bus'){body+=`<div class="route-board">${round[2].map((p,i)=>button(p,`data-route="${i}" aria-pressed="${r.routes[n].includes(i)}"`,r.routes[n].includes(i)?'route-place selected':'route-place')).join('')}</div><p>연결 ${r.routes[n].length}/2 · 빠지는 주민: <b>${round[2].filter((p,i)=>!r.routes[n].includes(i)).map(esc).join(' / ')}</b></p><p class="help">모두를 한 번에 연결할 수 없어요. 다른 시간이나 다른 이동 방법도 필요합니다.</p>`;
+ }else if(q.id==='road'&&n===0){body+=`<div class="cause-grid">${r.miniOrders[n].map(i=>button(round[2][i],`data-cause="${i}" ${r.causeOrder.includes(i)?'disabled':''}`,'cause-step')).join('')}</div><p>내 순서: ${r.causeOrder.map(i=>esc(round[2][i])).join(' → ')||'아직 없음'}</p><p class="help" id="hint">지하의 변화가 먼저, 겉면의 변화가 나중입니다.</p>`;
+ }else{body+=`<div class="field-cards">${round[2].map((v,i)=>{const key=n+'-'+i,ans=r.miniAnswers[key],correct=ans!=null&&l.miniOptions[ans]===v[1];return `<section class="field-card ${correct?'done':''}"><h4>${esc(v[0])}</h4>${correct?`<p>✓ ${esc(v[1])}</p>`:choices(l.miniOptions,`data-item-${i}`,ans)}${r.miniAttempts[key]>0&&!correct?`<p class="hint">힌트: ${esc(v[1])}의 역할과 조건을 확인해 보세요. 수정할 수 있어요.</p>`:''}</section>`;}).join('')}</div>`;}
+ const complete=q.id==='bus'?r.routes[n].length===2:q.id==='road'&&n===0?r.causeOrder.length===4:round[2].every((v,i)=>l.miniOptions[r.miniAnswers[n+'-'+i]]===v[1]);
+ body+=button(n===2?'조사 결과 비교하기':'이 기록으로 다음 현장 조사',`id="next" ${complete?'':'disabled'}`,'primary');shell(body);
+ if(q.id==='bus')bind('[data-route]',b=>{const i=+b.dataset.route,a=r.routes[n];if(a.includes(i))a.splice(a.indexOf(i),1);else if(a.length<2)a.push(i);else toast('연결할 두 곳을 바꾸려면 먼저 한 곳을 해제해요.');save();mini();});
+ else if(q.id==='road'&&n===0)bind('[data-cause]',b=>{const i=+b.dataset.cause,key='cause'+r.causeOrder.length;r.miniAttempts[key]=(r.miniAttempts[key]||0)+1;if(i===r.causeOrder.length)r.causeOrder.push(i);else toast('힌트: '+round[2][r.causeOrder.length]+'부터 살펴보세요.');save();mini();});
+ else round[2].forEach((v,i)=>bind(`[data-item-${i}]`,b=>{const key=n+'-'+i;r.miniAnswers[key]=+b.getAttribute(`data-item-${i}`);r.miniAttempts[key]=(r.miniAttempts[key]||0)+1;save();mini();}));
+ $('next').onclick=()=>{if(!complete)return;fieldLab();};}
+function compare(){const r=qstate(),q=currentQuest; const ci=r.compareIndex||0,c=q.choices[r.order[ci]];
+ const goodOptions=q.choices.map(x=>x.good),badOptions=q.choices.map(x=>x.bad);shell(`${journal()}<span class="pill">방법 비교 ${ci+1} / 3</span><h3>${esc(c.label)}</h3><p>이 방법이 잘하는 것과 남기는 문제를 연결해 보세요.</p><h4>어떤 장점이 있을까요?</h4>${choices(goodOptions,'data-good',r.compare[ci]?.good)}<h4>어떤 한계가 있을까요?</h4>${choices(badOptions,'data-bad',r.compare[ci]?.bad)}<p class="hint" id="compareHint">필요하면 조사 기록을 펼쳐 조건을 확인해요.</p>${button(ci===2?'세 방법을 비교하고 첫 계획 세우기':'다음 방법 비교',`id="next" ${r.compare[ci]?.good===r.order[ci]&&r.compare[ci]?.bad===r.order[ci]?'':'disabled'}`,'primary')}`);
+ for(const key of ['good','bad'])bind(`[data-${key}]`,b=>{r.compare[ci]||={};r.compare[ci][key]=+b.dataset[key];save();compare();if(r.compare[ci][key]!==r.order[ci])$('compareHint').textContent=`다시 생각해요: ${key==='good'?c.good:c.bad}`;});$('next').onclick=()=>{if(ci<2){r.compareIndex=ci+1;save();compare();}else advance(3);};}
+function firstPlan(){const r=qstate(),q=currentQuest;shell(`${journal()}<h3>첫 번째 해결 계획</h3><p>장점만 보지 말고 남는 문제까지 비교하세요. 선택 뒤에도 새 정보를 보고 유지하거나 보완할 수 있어요.</p><div class="choice-grid">${r.order.map((i,pos)=>{const c=q.choices[i];return `<button class="choice ${r.first===i?'selected':''}" data-first="${i}" aria-pressed="${r.first===i}"><b>${String.fromCharCode(65+pos)}. ${esc(c.label)}</b><span>✅ ${esc(c.good)}</span><span>💭 ${esc(c.bad)}</span></button>`;}).join('')}</div><h4>첫 계획에서 가장 중요하게 본 것은?</h4>${choices(REFLECTIONS,'data-priority',r.priority)}${button('이 계획으로 시험 운영',`id="next" ${r.first!==null&&r.priority!=null?'':'disabled'}`,'primary')}`);bind('[data-first]',b=>{r.first=+b.dataset.first;save();firstPlan();});bind('[data-priority]',b=>{r.priority=+b.dataset.priority;save();firstPlan();});$('next').onclick=()=>advance(4);}
+function budgetUI(){const r=qstate(),l=LESSONS[currentQuest.id];return `<p>이번 달 활동 자원 <b>6칸</b>을 나누세요. 한 곳은 최대 3칸입니다. 남은 자원: <b>${6-r.budget.reduce((a,b)=>a+b,0)}</b></p><div class="budget-grid">${l.groups.map((g,i)=>`<section><h4>${esc(g)}</h4>${button('−',`data-minus="${i}" aria-label="${esc(g)} 자원 줄이기" ${r.budget[i]===0?'disabled':''}`)} <strong>${r.budget[i]}</strong> ${button('+',`data-plus="${i}" aria-label="${esc(g)} 자원 늘리기" ${r.budget[i]===3||r.budget.reduce((a,b)=>a+b,0)>=6?'disabled':''}`)}<p>${r.budget[i]===0?'지원 없음: 남은 불편을 확인하세요.':r.budget[i]===1?'최소 지원: 일부 요구만 반영':r.budget[i]===2?'보통 지원: 기본 활동 가능':'집중 지원: 다른 곳의 자원이 줄어요.'}</p></section>`).join('')}</div>`;}
+function bindBudget(render){bind('[data-minus]',b=>{rchange(+b.dataset.minus,-1,render);});bind('[data-plus]',b=>{rchange(+b.dataset.plus,1,render);});}
+function rchange(i,v,render){const r=qstate();if(r.budget[i]+v<0||r.budget[i]+v>3||r.budget.reduce((a,b)=>a+b,0)+v>6)return;r.budget[i]+=v;r.budgetMoves=(r.budgetMoves||0)+1;save();render();}
+function fieldReaction(i){const q=currentQuest,r=qstate(),l=LESSONS[q.id];
+ if(q.id==='bus'){const omitted=r.routes.map((route,n)=>!route.includes(i)?l.rounds[n][0]:null).filter(Boolean);return omitted.length?`내 노선에서 ${l.groups[i]}은 ${omitted.join(', ')}에 연결되지 않았어요. 이 불편을 유지·환승·노선 변경 중 어떤 방식으로 다룰까요?`:`내 노선은 ${l.groups[i]}을 세 시간대 모두 연결했어요. 다른 주민에게 빠진 시간은 없는지도 비교해요.`;}
+ const errors=Object.entries(r.miniAttempts).filter(([key,n])=>key.includes('-')&&n>1).map(([key])=>{const [round,item]=key.split('-').map(Number);return l.rounds[round][2][item][0];});
+ if(errors.length)return `내 조사에서 다시 살핀 사례: ${errors.join(', ')}. 수정한 기록을 이번 판단의 근거로 쓸 수 있어요.`;
+ return q.id==='sea'?'내 기록: 포장 쓰레기 5개, 어업 쓰레기 3개, 자연물 4개. 쓰레기 종류에 따라 발생 장소를 다르게 살펴요.':q.id==='clinic'?'내 기록: 기본 진료·방문 진료·전문 검사·응급 연결을 구별했어요. 같은 이동 방법을 모두에게 적용하면 부담이 남아요.':q.id==='house'?'내 기록: 활용 전에 안전·소유자 동의·운영 담당을 확인했어요. 집마다 같은 용도를 적용하지 않았어요.':'내 기록: 누수 → 흙 유실 → 빈 공간 → 도로 꺼짐. 표면 복구 뒤에도 원인과 주변 위험을 확인해요.';
+}
+function choiceReaction(i){const r=qstate(),q=currentQuest,views={sea:[[9,7,4],[6,6,9],[7,9,8]],bus:[[8,9,6],[4,8,7],[9,6,8]],clinic:[[9,4,6],[6,8,9],[7,9,6]],house:[[8,4,4],[7,5,9],[6,9,6]],road:[[8,9,3],[6,4,9],[7,7,8]]};const value=views[q.id][r.first][i];return value>=8?'첫 계획이 제 필요에 큰 도움이 돼요. 남는 한계도 함께 살펴 주세요.':value>=6?'첫 계획이 일부 도움이 되지만 제 불편이 모두 해결된 것은 아니에요.':'첫 계획만으로는 제 걱정이 많이 남아요. 다른 관점이나 보완도 비교해 주세요.';}
+function allocate(){const r=qstate();shell(`<h3>한정된 자원을 나누어 시험해요</h3><p>선택한 방법: <b>${esc(currentQuest.choices[r.first].label)}</b></p>${budgetUI()}<p>한 곳을 더 지원하면 다른 곳이 줄어요. 한 번 이상 조정하며 비교해 보세요.</p>${button('지원 결과 확인',`id="next" ${r.budget.reduce((a,b)=>a+b,0)===6&&r.budgetMoves>=2?'':'disabled'}`,'primary')}`);bindBudget(allocate);$('next').onclick=()=>{r.initialBudget=[...r.budget];advance(5);};}
+function eventView(){const q=currentQuest,r=qstate(),l=LESSONS[q.id],n=r.event,t=l.tasks[n],d=r.decisions[n]||{},stage=d.stage||0;if(stage===4)return responseBoard();
+ let body=`<span class="pill">시험 운영 ${n+1} / 3</span><h3>${esc(t.title)}</h3><div class="feedback-card"><b>첫 계획의 결과</b><p>${esc(q.choices[r.first].reaction)}</p><p>남아 있는 한계: ${esc(q.choices[r.first].bad)}</p></div>${journal()}<div class="npc"><b>새 정보</b>${esc(t.detail)}</div>`;
+ if(stage===0){body+=`<h4>주민에게 결과를 확인해요</h4>${l.people.map((p,i)=>`<section class="resident">${button('💬 '+p[0]+'의 반응',`data-hear="${i}"`)}${r.eventHeard.includes(i)?`<p>${esc(p[1])}</p><p>${esc(choiceReaction(i))}</p><p>${esc(fieldReaction(i))}</p><p>${esc(l.groups[i])} 지원 ${r.budget[i]}칸: ${r.budget[i]<2?'아직 불편이 남아요. 다른 방법이나 추가 지원이 필요해요.':'지원이 도움이 됐어요. 다음 달에도 이어질지 확인해 주세요.'}</p>`:''}</section>`).join('')}${button('의견을 비교하고 대응하기',`id="next" ${r.eventHeard.length===3?'':'disabled'}`,'primary')}`;
+ }else if(stage===1){body+=`<h4>${['추가 방법·기존 방법 비교','노선과 예약 방식 수정','긴급성에 따른 순서 재결정','집별 용도와 운영 재조정','사후 복구와 예방 방향 결정'][QUESTS.indexOf(q)]}</h4><div class="choice-grid">${r.actionOrders[n].map((i,pos)=>`<button class="choice ${d.action===i?'selected':''}" data-action="${i}"><b>${String.fromCharCode(65+pos)}. ${esc(t.actions[i][0])}</b><span>${esc(t.actions[i][1])}</span></button>`).join('')}</div><h4>이 판단의 근거로 사용할 정보는?</h4>${choices(t.evidence,'data-evidence',d.evidence)}${button('이 대응의 결과 비교',`id="next" ${d.action!=null&&d.evidence!=null?'':'disabled'}`,'primary')}`;
+ }else if(stage===2){const a=t.actions[d.action];body+=`<h4>내 대응 결과</h4><p class="npc">${esc(d.boardFeedback||'')}</p><div class="feedback-card"><b>${esc(a[0])}</b><p>${esc(a[1])}</p><p>${d.evidence===t.expected?'상황과 관련된 근거를 사용했어요.':'근거가 상황을 충분히 설명하지 못해요. 무엇을 빠뜨렸는지 다시 살펴볼 수 있어요.'}</p>${KEYS.map((k,i)=>`<p>${STAT_LABELS[k]}: ${a[2][i]>=8?'도움이 큼':a[2][i]>=6?'도움이 있지만 한계가 남음':'추가 보완이 필요'}</p>`).join('')}</div><details><summary>다른 대응을 했다면?</summary>${t.actions.map(a=>`<p><b>${esc(a[0])}</b>: ${esc(a[1])}</p>`).join('')}</details><h4>결과를 보고 다시 결정해요</h4>${button('이 대응을 유지하고 자원 조정','id="keep"','primary')} ${button('다른 대응과 근거 다시 비교','id="retry"')}`;
+ }else{body+=`<h4>이번 대응을 실행할 자원</h4><p>${esc(t.actions[d.action][0])}</p>${budgetUI()}<h4>남는 한계도 확인했나요?</h4>${choices([t.actions[d.action][1],'이 방법이면 모든 문제가 완전히 사라진다.','다른 주민의 의견은 더 듣지 않아도 된다.'],'data-limit',d.limit)}${button(n===2?'최종 결과와 돌아보기':'다음 시험 운영 결과 보기',`id="next" ${r.budget.reduce((a,b)=>a+b,0)===6&&d.limit===0?'':'disabled'}`,'primary')}`;}
+ shell(body);
+ const update=()=>{r.decisions[n]=d;save();eventView();};
+ bind('[data-hear]',b=>{const i=+b.dataset.hear;if(!r.eventHeard.includes(i))r.eventHeard.push(i);save();eventView();});bind('[data-action]',b=>{d.action=+b.dataset.action;update();});bind('[data-evidence]',b=>{d.evidence=+b.dataset.evidence;update();});bind('[data-limit]',b=>{d.limit=+b.dataset.limit;update();});bindBudget(eventView);
+ if($('keep'))$('keep').onclick=()=>{d.stage=3;update();};if($('retry'))$('retry').onclick=()=>{d.stage=1;d.retries=(d.retries||0)+1;update();};if($('next'))$('next').onclick=()=>{if(stage===0||stage===1){d.stage=stage===1?4:1;update();}else if(stage===3){d.budget=[...r.budget];d.finalAction=d.action;if(n<2){r.event++;r.eventHeard=[];save();eventView();}else advance(6);}};
+}
+function scoreQuest(q,r){const l=LESSONS[q.id];const attempts=Object.values(r.miniAttempts),errors=attempts.reduce((a,n)=>a+Math.max(0,n-1),0);const mini=Math.max(5,10-errors*.3);
+ const events=r.decisions.map((d,i)=>l.tasks[i].actions[d.finalAction??d.action][2]);const evidence=r.decisions.filter((d,i)=>d.evidence===l.tasks[i].expected).length/3;
+ const allocation=KEYS.map((k,i)=>i===2?Math.min(...r.budget)>=1?9:5:8);
+ const board=r.decisions.reduce((sum,d,n)=>sum+boardScore(q.id,n,d.board),0)/3;
+ const lab=(r.labs||[]).filter(l=>l.done).reduce((sum,l)=>sum+l.results[l.chosen].reduce((a,b)=>a+b,0)/30,0)/3 || 7;
+ const field=q.id==='bus'&&new Set(r.routes.flat()).size<3?7:mini;
+ return KEYS.map((k,i)=>Math.round(Math.max(0,Math.min(20,2*(FIRST_SCORES[q.id][r.first][i]*.2+field*.15+events.reduce((a,v)=>a+v[i],0)/3*.3+(6+4*evidence)*.1+board*.1+lab*.05+allocation[i]*.1)))));
+}
+function reflect(){const r=qstate(),score=scoreQuest(currentQuest,r);shell(`<h3>최종 결과</h3><div class="feedback-card"><p>첫 계획: ${esc(currentQuest.choices[r.first].label)}</p>${r.decisions.map((d,i)=>`<p>시험 ${i+1}: ${esc(LESSONS[currentQuest.id].tasks[i].actions[d.finalAction][0])}</p>`).join('')}<div class="delta">${KEYS.map((k,i)=>`<div>${STAT_LABELS[k]}<b>+${score[i]}</b></div>`).join('')}</div></div><h4>이 문제를 해결할 때 가장 중요했던 것은 무엇인가요?</h4><p>생각을 기록하는 질문이에요. 점수는 바뀌지 않아요.</p>${choices(REFLECTIONS,'data-reflection',r.reflection)}${button('배지 받고 마을에 기록하기',`id="next" ${r.reflection!==null?'':'disabled'}`,'primary')}`);bind('[data-reflection]',b=>{r.reflection=+b.dataset.reflection;save();reflect();});$('next').onclick=()=>{if(!state.completed[currentQuest.id])state.completed[currentQuest.id]={...structuredClone(r),score};r.phase=7;save();renderAll();completion();toast(currentQuest.badge+' 획득!');};}
+function questFeedback(q,r,index){const parts=[{label:q.choices[r.first].label,score:FIRST_SCORES[q.id][r.first],detail:q.choices[r.first].bad,good:q.choices[r.first].good},...r.decisions.map((d,i)=>{const a=LESSONS[q.id].tasks[i].actions[d.finalAction??d.action];return {label:a[0],score:a[2],detail:a[1]};})];const sorted=parts.sort((a,b)=>a.score[index]-b.score[index]);return {weak:sorted[0],strong:sorted[sorted.length-1]};}
+function completion(){const q=currentQuest,c=state.completed[q.id],r=c;shell(`<div class="badge-celebration"><h3>${q.badge} 획득!</h3><p>첫 계획: ${esc(q.choices[r.first].label)}</p><p>중요하게 생각한 것: ${esc(REFLECTIONS[r.reflection])}</p></div><div class="delta">${KEYS.map((k,i)=>`<div>${STAT_LABELS[k]}<b>+${c.score[i]}</b></div>`).join('')}</div>${r.decisions.map((d,i)=>`<div class="feedback-card"><b>${esc(LESSONS[q.id].tasks[i].title)}</b><p>${esc(LESSONS[q.id].tasks[i].actions[d.finalAction][0])}: ${esc(LESSONS[q.id].tasks[i].actions[d.finalAction][1])}</p></div>`).join('')}${journal()}<p>이 완료 기록의 점수는 한 번만 합산됩니다.</p>${button('마을 지도로 돌아가기','id="goMap"','primary')} ${button('점수 없이 다시 체험하기','id="replay"')}`);$('goMap').onclick=goMap;$('replay').onclick=()=>{state.quests[q.id]=startRecord();save();renderQuest();};}
+function goMap(){state.active=null;currentQuest=null;save();renderAll();showScreen('mapScreen');}
+function rankFor(scores){const avg=scores.reduce((a,b)=>a+b,0)/4,min=Math.min(...scores);return avg>=85&&min>=75?'S':avg>=75&&min>=60?'A':avg>=60&&min>=40?'B':'C';}
+function buildResult(){if(Object.keys(state.completed).length<5)return toast('다섯 퀘스트를 먼저 완료해요.');const scores=totals(),rank=rankFor(scores),avg=Math.round(scores.reduce((a,b)=>a+b,0)/4),low=scores.indexOf(Math.min(...scores)),high=scores.indexOf(Math.max(...scores));
+ $('resultContent').innerHTML=`<section class="result-sheet"><h2>우리 마을 해결사 평가서</h2><div class="rank">${rank}</div><div class="rank-sub">${{S:'여러 관점을 살핀 마을 해결사',A:'뛰어난 마을 해결사',B:'든든한 마을 해결사',C:'성장 중인 마을 해결사'}[rank]}</div><p>종합 점수 ${avg}/100 · 총점 ${scores.reduce((a,b)=>a+b,0)}/400</p><div class="score-bars">${KEYS.map((k,i)=>`<div class="barline"><span>${STAT_LABELS[k]}</span><div class="bar"><div style="width:${scores[i]}%"></div></div><b>${scores[i]}/100</b></div>`).join('')}</div><p>가장 높은 관점: <b>${STAT_LABELS[KEYS[high]]}</b> · 가장 낮은 관점: <b>${STAT_LABELS[KEYS[low]]}</b>${high===low?' (네 관점의 점수가 같아요.)':''}</p><p class="help">S는 종합 85점 이상이며 모든 관점이 75점 이상일 때 받을 수 있어요. A와 B도 균형을 함께 봅니다.</p>${QUESTS.map(q=>{const r=state.completed[q.id],f=questFeedback(q,r,low),s=questFeedback(q,r,high);return `<div class="feedback-card"><h3>${q.icon} ${q.short}</h3><p>🌟 ${STAT_LABELS[KEYS[high]]}에 도움이 된 선택: <b>${esc(s.strong.label)}</b> — ${esc(s.strong.good||s.strong.detail)}</p><p>📌 ${STAT_LABELS[KEYS[low]]}에서 다시 살필 선택: <b>${esc(f.weak.label)}</b> — ${esc(f.weak.detail)}</p><p>내가 중요하게 본 것: ${esc(REFLECTIONS[r.reflection])}</p><p>활동 시간: ${Math.floor(Math.round(r.seconds)/60)}분 ${Math.round(r.seconds)%60}초</p></div>`;}).join('')}<div class="feedback-card"><h3>오늘 발견한 것</h3><p>빠른 해결, 오래가는 해결, 주민의 생활, 문제의 원인을 함께 비교했어요. 새 정보와 근거에 맞는다면 처음 방법을 유지하는 것도 좋은 판단입니다.</p></div>${button('내 활동 기록 내려받기','id="download"','primary')}</section>`;
+ $('download').onclick=download;showScreen('resultScreen');state.active=null;currentQuest=null;save();}
+function download(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='완도ON-활동기록.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+function resetDialog(step){const modal=$('modal');modal.classList.add('open');modal.setAttribute('aria-hidden','false');document.querySelector('main').inert=true;$('modalContent').innerHTML=`<h2 id="resetTitle">${step===1?'처음부터 시작할까요?':'정말 기록을 지울까요?'}</h2><p>${step===1?'이 기기의 진행, 점수, 배지가 초기화됩니다.':'기록을 지우면 되돌릴 수 없어요. 필요한 기록은 먼저 내려받으세요.'}</p>${button(step===1?'다음 확인':'모든 새 수업 기록 초기화','id="confirmReset"','primary')} ${button('계속 플레이하기','id="cancelReset"')} ${button('기록 내려받기','id="exportBeforeReset"')}`;const close=()=>{modal.classList.remove('open');modal.setAttribute('aria-hidden','true');document.querySelector('main').inert=false;$('resetBtn').focus();};$('confirmReset').onclick=()=>{if(step===1)return resetDialog(2);state=fresh();currentQuest=null;close();save();renderAll();showScreen('mapScreen');};$('cancelReset').onclick=close;$('exportBeforeReset').onclick=download;$('cancelReset').focus();modal.onkeydown=e=>{if(e.key==='Escape'){close();return;}if(e.key==='Tab'){const buttons=[...modal.querySelectorAll('button')],i=buttons.indexOf(document.activeElement);e.preventDefault();buttons[(i+(e.shiftKey?-1:1)+buttons.length)%buttons.length].focus();}};}
+const status=document.createElement('p');status.id='saveStatus';status.className='save-status';status.setAttribute('role','status');document.querySelector('main').prepend(status);
+$('backToMap').onclick=goMap;$('backFromResult').onclick=goMap;$('resultGate').onclick=buildResult;
+$('resetBtn').onclick=()=>{if(!confirm('이 기기의 새 수업 진행, 점수, 배지를 초기화할까요?'))return;if(!confirm('활동 기록이 사라집니다. 정말 처음부터 시작할까요?'))return;state=fresh();currentQuest=null;save();renderAll();showScreen('mapScreen');};
+renderAll();save();if(state.active&&QUESTS.some(q=>q.id===state.active))openQuest(state.active);
 
-function loadState(){
-  try{
-    const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||"null");
-    return saved?{...defaultState,...saved,stats:{...defaultState.stats,...saved.stats},completed:{...saved.completed},review:{...defaultState.review,...saved.review}}:structuredClone(defaultState);
-  }catch(e){return structuredClone(defaultState)}
-}
-function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(state))}
-function $(id){return document.getElementById(id)}
-function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
-function showScreen(id){document.querySelectorAll(".screen").forEach(x=>x.classList.remove("active"));$(id).classList.add("active");scrollTo({top:0,behavior:"smooth"})}
-function toast(msg){const t=document.createElement("div");t.className="toast";t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),1700)}
 
-function renderAll(){renderStats();renderMap();renderBadges()}
-function renderStats(){
-  $("statEffect").textContent=state.stats.effect;
-  $("statSustain").textContent=state.stats.sustain;
-  $("statCare").textContent=state.stats.care;
-  $("statCause").textContent=state.stats.cause;
-}
-function renderMap(){
-  const nodes=$("questNodes");
-  nodes.innerHTML=QUESTS.map(q=>{
-    const done=!!state.completed[q.id];
-    return `<button class="quest-node ${done?"done":""}" data-id="${q.id}" style="left:${q.pos.left};top:${q.pos.top}">
-      <span class="icon">${q.icon}</span><strong>${q.short}</strong><small>${done?"해결 완료":"퀘스트 보기"}</small>
-    </button>`
-  }).join("");
-  nodes.querySelectorAll(".quest-node").forEach(b=>b.addEventListener("click",()=>openQuest(b.dataset.id)));
-  const count=Object.keys(state.completed).length;
-  $("progressText").textContent=`${count} / 5 완료`;
-  const gate=$("resultGate");
-  gate.classList.toggle("locked",count<5);
-  gate.querySelector("small").textContent=count<5?"5개 퀘스트 완료 후 열림":"최종 평가 보기";
-}
-function renderBadges(){
-  $("badgeList").innerHTML=QUESTS.map(q=>`<span class="badge ${state.completed[q.id]?"on":""}">${q.badge}</span>`).join("")
-}
 
-function openQuest(id){
-  currentQuest=QUESTS.find(q=>q.id===id);
-  if(!currentQuest)return;
-  showScreen("questScreen");
-  renderQuestIntro();
-}
-function renderQuestIntro(){
-  const q=currentQuest, done=state.completed[q.id];
-  $("questContent").innerHTML=`
-    <article class="quest-card">
-      <div class="quest-head">
-        <div class="quest-title"><div class="bigicon">${q.icon}</div><div><div class="pill">${esc(q.problem)}</div><h2>${esc(q.title)}</h2><p>${done?"이 퀘스트는 이미 완료했어요. 다시 체험해도 점수는 중복되지 않습니다.":"주민의 부탁을 듣고 해결해 보세요."}</p></div></div>
-        <span class="badge ${done?"on":""}">${done?q.badge:"미완료"}</span>
-      </div>
-      <div class="npc"><b>${esc(q.npc)}</b>“${esc(q.dialogue)}”</div>
-      <div class="stepbox">
-        <h3>🎮 먼저 문제를 직접 체험해 볼까요?</h3>
-        <p class="help">미니게임을 완료하면 해결방법을 고를 수 있어요.</p>
-        <button class="primary" id="startMini">미니게임 시작</button>
-      </div>
-    </article>`;
-  $("startMini").onclick=()=>renderMiniGame(q);
-}
 
-function renderMiniGame(q){
-  const host=$("questContent");
-  if(q.game==="trash") return miniTrash(q,host);
-  if(q.game==="route") return miniRoute(q,host);
-  if(q.game==="patient") return miniPatient(q,host);
-  if(q.game==="house") return miniHouse(q,host);
-  if(q.game==="cause") return miniCause(q,host);
-}
-function miniShell(q,title,help,body){
-  $("questContent").innerHTML=`<article class="quest-card"><div class="quest-title"><div class="bigicon">${q.icon}</div><div><div class="pill">미니게임</div><h2>${title}</h2><p>${help}</p></div></div><div class="mini-area">${body}</div></article>`;
-}
-function miniTrash(q){
-  miniShell(q,"바다 쓰레기 수거 작전","쓰레기만 클릭하세요. 물고기와 해초는 건드리면 안 돼요!",`<div class="timerline"><span id="trashScore">수거 0 / 8</span><span id="trashMistake">실수 0</span></div><div id="trashField" class="trash-field"></div>`);
-  const field=$("trashField");let score=0,mistake=0;
-  const goods=["🧴","🥫","🧃","🪢","📦"],naturals=["🐟","🌿","🐚"];
-  for(let i=0;i<13;i++){
-    const good=i<8,btn=document.createElement("button");btn.className="trash-item";btn.textContent=(good?goods:naturals)[Math.floor(Math.random()*(good?goods.length:naturals.length))];
-    btn.style.left=(5+Math.random()*85)+"%";btn.style.top=(5+Math.random()*75)+"%";
-    btn.onclick=()=>{if(btn.disabled)return;btn.disabled=true;if(good){score++;btn.classList.add("good-hit");$("trashScore").textContent=`수거 ${score} / 8`;if(score===8)setTimeout(()=>finishMini(q,"깨끗해졌어요! 그런데 며칠 뒤 또 쓰레기가 들어왔습니다."),350)}else{mistake++;$("trashMistake").textContent=`실수 ${mistake}`;btn.style.background="#ffd7d7";setTimeout(()=>btn.remove(),300)}};
-    field.appendChild(btn)
-  }
-}
-function miniRoute(q){
-  miniShell(q,"버스 노선 연결하기","버스 2대로 네 장소 중 세 곳만 연결할 수 있어요. 어떤 곳을 우선할지 골라 보세요.",`<div id="routeBoard" class="route-board"></div><div class="route-info" id="routeInfo">선택 0 / 3</div>`);
-  const places=[["🏘️","마을"],["🏥","병원"],["🛒","시장"],["🏫","학교"]],selected=[];
-  $("routeBoard").innerHTML=places.map((p,i)=>`<button class="route-place" data-i="${i}"><div style="font-size:30px">${p[0]}</div><b>${p[1]}</b></button>`).join("");
-  document.querySelectorAll(".route-place").forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if(selected.includes(i)){selected.splice(selected.indexOf(i),1);b.classList.remove("selected")}else if(selected.length<3){selected.push(i);b.classList.add("selected")}else return toast("세 곳까지만 연결할 수 있어요.");$("routeInfo").textContent=`선택 ${selected.length} / 3`;if(selected.length===3)setTimeout(()=>finishMini(q,"세 곳은 연결했지만 한 곳은 여전히 불편합니다. 한 방법으로 모두를 만족시키기는 어렵네요."),450)});
-}
-function miniPatient(q){
-  const pats=[["🤧","감기 환자"],["🩹","다친 사람"],["🩺","정기검진"],["🚑","응급환자"]];
-  miniShell(q,"환자를 어디로 보낼까?","각 환자에게 알맞은 곳을 골라 주세요.",`<div id="patientGrid" class="patient-grid"></div>`);
-  const answers=["보건소","지역병원","보건소","대형병원"];let done=0;
-  $("patientGrid").innerHTML=pats.map((p,i)=>`<div class="patient" id="pat${i}"><b>${p[0]} ${p[1]}</b><div class="option-row">${["보건소","이동진료차","지역병원","대형병원"].map(x=>`<button class="tiny" data-i="${i}" data-v="${x}">${x}</button>`).join("")}</div></div>`).join("");
-  document.querySelectorAll(".patient .tiny").forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if($("pat"+i).classList.contains("done"))return;if(b.dataset.v===answers[i] || (i<2&&b.dataset.v==="이동진료차")){$("pat"+i).classList.add("done");done++;toast("좋은 선택이에요.");if(done===4)setTimeout(()=>finishMini(q,"환자마다 필요한 치료가 다릅니다. 한 시설만으로 모든 의료 문제를 해결할 수는 없어요."),450)}else toast("이 환자에게는 다른 곳이 더 알맞을 것 같아요.")});
-}
-function miniHouse(q){
-  const houses=[["학교 근처","주민 문화공간"],["매우 낡음","철거 후 공원"],["관광지 근처","작은 카페"]];
-  const uses=["주택","작은 카페","주민 문화공간","철거 후 공원"];let done=0;
-  miniShell(q,"빈집 활용 퍼즐","집의 위치와 상태를 보고 가장 어울리는 활용 방법을 골라 보세요.",`<div id="houseGrid" class="house-grid"></div>`);
-  $("houseGrid").innerHTML=houses.map((h,i)=>`<div class="house" id="house${i}"><b>🏚️ ${i+1}번 집</b><p>${h[0]}</p><div class="option-row">${uses.map(u=>`<button class="tiny" data-i="${i}" data-v="${u}">${u}</button>`).join("")}</div></div>`).join("");
-  document.querySelectorAll(".house .tiny").forEach(b=>b.onclick=()=>{const i=+b.dataset.i;if($("house"+i).classList.contains("done"))return;if(b.dataset.v===houses[i][1]){$("house"+i).classList.add("done");done++;toast("조건에 잘 맞는 활용이에요.");if(done===3)setTimeout(()=>finishMini(q,"빈집마다 위치와 상태가 달라서 같은 방법을 모두에게 적용하기는 어렵습니다."),450)}else toast("이 집의 조건을 다시 살펴보세요.")});
-}
-function miniCause(q){
-  const order=["수도관 누수","흙이 쓸려나감","지하 빈 공간 발생","도로가 꺼짐"],choices=["도로가 꺼짐","수도관 누수","지하 빈 공간 발생","흙이 쓸려나감"];let step=0;
-  miniShell(q,"원인 찾기 탐정 게임","싱크홀이 생기는 과정을 처음부터 순서대로 클릭하세요.",`<div id="causeGrid" class="cause-grid"></div><p class="route-info" id="causeInfo">첫 번째 원인을 찾아보세요.</p>`);
-  $("causeGrid").innerHTML=choices.map(x=>`<button class="cause-step" data-v="${x}">${x}</button>`).join("");
-  document.querySelectorAll(".cause-step").forEach(b=>b.onclick=()=>{if(b.disabled)return;if(b.dataset.v===order[step]){b.disabled=true;b.classList.add("done");step++;$("causeInfo").textContent=step<4?`${step+1}번째 과정을 찾아보세요.`:"원인 흐름 완성!";if(step===4)setTimeout(()=>finishMini(q,"겉으로 보이는 구멍만 메우는 것보다 아래에서 시작된 원인을 함께 살펴봐야 합니다."),450)}else toast("조금 더 앞에서 일어난 일을 찾아보세요.")});
-}
-function finishMini(q,message){
-  $("questContent").innerHTML=`<article class="quest-card"><div class="quest-title"><div class="bigicon">${q.icon}</div><div><div class="pill">문제 체험 완료</div><h2>${q.title}</h2></div></div><div class="npc"><b>발견!</b>${message}</div><div class="stepbox"><h3>🛠️ 어떤 해결방법을 선택할까요?</h3><p class="help">정답 하나를 찾는 문제가 아닙니다. 각 방법의 장단점을 생각하며 골라 보세요.</p><div class="choice-grid">${q.choices.map((c,i)=>`<button class="choice" data-i="${i}"><b>${String.fromCharCode(65+i)}. ${c.label}</b><span>이 방법을 선택해 결과 확인하기</span></button>`).join("")}</div></div></article>`;
-  document.querySelectorAll(".choice").forEach(b=>b.onclick=()=>chooseSolution(q,+b.dataset.i))
-}
-function chooseSolution(q,index){
-  const ch=q.choices[index],already=!!state.completed[q.id];
-  if(!already){
-    Object.keys(ch.score).forEach(k=>state.stats[k]+=ch.score[k]);
-    state.completed[q.id]={choice:index,score:ch.score};
-    save();renderAll();
-  }
-  $("questContent").innerHTML=`<article class="quest-card"><div class="quest-title"><div class="bigicon">${q.icon}</div><div><div class="pill">퀘스트 완료</div><h2>${q.badge} 획득!</h2></div></div><div class="feedback-card"><h3>내 선택</h3><p><b>${ch.label}</b></p><p>✅ <b>좋은 점:</b> ${ch.good}</p><p>💭 <b>아쉬운 점:</b> ${ch.bad}</p><p>🗣️ <b>주민 반응:</b> ${ch.reaction}</p><div class="delta">${Object.entries(ch.score).map(([k,v])=>`<div>${STAT_LABELS[k]}<b>+${v}</b></div>`).join("")}</div></div><div style="display:flex;gap:10px;margin-top:16px"><button class="primary" id="goMap">마을 지도로 돌아가기</button></div></article>`;
-  $("goMap").onclick=()=>{showScreen("mapScreen");renderAll();if(Object.keys(state.completed).length===5)toast("🏆 모든 퀘스트 완료! 평가서가 열렸어요.")}
-}
-function buildResult(){
-  if(Object.keys(state.completed).length<5)return toast("아직 해결하지 않은 퀘스트가 있어요.");
-  const max=15,total=Object.values(state.stats).reduce((a,b)=>a+b,0),pct=Math.round(total/60*100);
-  const rank=pct>=90?"S":pct>=78?"A":pct>=65?"B":"C";
-  const rankText={S:"마을 해결사 MASTER",A:"뛰어난 마을 해결사",B:"든든한 마을 해결사",C:"성장 중인 마을 해결사"}[rank];
-  const entries=Object.entries(state.stats).sort((a,b)=>a[1]-b[1]),low=entries[0][0],high=entries[entries.length-1][0];
-  const lowMsg={
-    effect:"여러 관점을 생각한 점은 좋았지만, 실제로 문제를 얼마나 줄일 수 있는 방법인지도 함께 살펴보면 좋아요.",
-    sustain:"당장 문제를 줄이는 방법을 많이 선택했어요. 오랫동안 문제가 다시 생기지 않는 방법도 생각해 보세요.",
-    care:"문제를 해결하는 힘은 좋았지만, 그 방법이 다른 주민들에게 어떤 영향을 줄지도 함께 생각해 보면 좋아요.",
-    cause:"문제가 생긴 뒤 처리하는 방법을 많이 선택했어요. 다음에는 ‘왜 이 문제가 계속 생길까?’를 먼저 생각해 보세요."
-  }[low];
-  $("resultContent").innerHTML=`<section class="result-sheet"><div class="rank">${rank}</div><div class="rank-sub">${rankText}</div><p style="text-align:center;color:#667085">종합 점수 ${pct}점</p><div class="score-bars">${Object.entries(state.stats).map(([k,v])=>`<div class="barline"><span>${STAT_LABELS[k]}</span><div class="bar"><div style="width:${v/max*100}%"></div></div><b>${v}/15</b></div>`).join("")}</div><div class="feedback-card"><h3>🌟 강점</h3><p>당신의 강점은 <b>${STAT_LABELS[high]}</b>입니다. 이 관점으로 지역문제를 바라보는 힘이 좋아요!</p><h3>📌 다음에 더 생각해 볼 점</h3><p>${lowMsg}</p></div><div class="badge-strip"><h3>획득 배지</h3><div class="badges">${QUESTS.map(q=>`<span class="badge on">${q.badge}</span>`).join("")}</div></div><div class="feedback-card"><h3>📚 오늘의 핵심</h3><p>지역문제의 해결방법은 하나만 있는 것이 아닙니다. 해결방법마다 좋은 점과 아쉬운 점이 있기 때문에 문제의 원인과 여러 사람의 입장을 함께 생각하며 결정해야 합니다.</p></div><div class="review"><h3>✍️ 마지막 돌아보기</h3><label>내가 가장 잘 해결했다고 생각하는 퀘스트는?</label><div class="option-row">${QUESTS.map(q=>`<button class="tiny review-q ${state.review.quest===q.id?"selected":""}" data-id="${q.id}">${q.icon} ${q.short}</button>`).join("")}</div><label style="display:block;margin-top:14px">그렇게 생각한 까닭은?</label><textarea id="reviewReason" placeholder="내가 선택한 해결방법의 좋은 점을 떠올려 써 보세요.">${esc(state.review.reason)}</textarea><button class="primary" id="saveReview" style="margin-top:10px">돌아보기 저장</button></div></section>`;
-  document.querySelectorAll(".review-q").forEach(b=>b.onclick=()=>{state.review.quest=b.dataset.id;save();document.querySelectorAll(".review-q").forEach(x=>x.classList.remove("selected"));b.classList.add("selected")});
-  $("saveReview").onclick=()=>{state.review.reason=$("reviewReason").value.trim();save();toast("돌아보기를 저장했어요!")}
-  showScreen("resultScreen")
-}
 
-$("backToMap").onclick=()=>showScreen("mapScreen");
-$("backFromResult").onclick=()=>showScreen("mapScreen");
-$("resultGate").onclick=()=>buildResult();
-$("resetBtn").onclick=()=>{
-  if(!confirm("퀘스트, 점수, 배지를 모두 처음부터 다시 시작할까요?"))return;
-  if(!confirm("한 번 지우면 되돌릴 수 없어요. 정말 초기화할까요?"))return;
-  localStorage.removeItem(STORAGE_KEY);state=structuredClone(defaultState);renderAll();showScreen("mapScreen");toast("처음 상태로 돌아왔어요.")
-};
-renderAll();
+
+
+
+

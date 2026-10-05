@@ -52,3 +52,4 @@ const QUESTS = [
 ];
 
 const STAT_LABELS={effect:"⚡ 효과성",sustain:"🌱 지속성",care:"🤝 주민 배려",cause:"🔍 원인 해결력"};
+

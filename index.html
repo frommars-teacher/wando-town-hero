@@ -28,7 +28,7 @@
         <div>
           <span class="pill">마을 의뢰 5개</span>
           <h2>원하는 곳부터 골라 해결해 보세요.</h2>
-          <p>미니게임으로 문제를 체험한 뒤, 해결방법을 고르면 결과와 능력치가 달라집니다.</p>
+          <p>현장을 조사하고 장단점을 비교한 뒤, 주민 반응을 보며 계획을 다듬어 보세요. 진행은 자동 저장됩니다.</p>
         </div>
         <div id="progressText" class="progress-text">0 / 5 완료</div>
       </div>
@@ -65,12 +65,15 @@
   </main>
 
   <div id="modal" class="modal" aria-hidden="true">
-    <div class="modal-card" role="dialog" aria-modal="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="resetTitle">
       <div id="modalContent"></div>
     </div>
   </div>
 
   <script src="data.js"></script>
+  <script src="lesson.js"></script>
+  <script src="experiments.js"></script>
+  <script src="responses.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
