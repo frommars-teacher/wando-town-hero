@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>완도ON 2 : 우리 마을 해결사</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">초4 사회 · 지역문제 해결방법 탐색</div>
+      <h1>🏝️ 완도ON 2 : 우리 마을 해결사</h1>
+    </div>
+    <button id="resetBtn" class="ghost">처음부터 다시하기</button>
+  </header>
+
+  <section class="stats-wrap">
+    <div class="stat"><span>⚡ 효과성</span><b id="statEffect">0</b></div>
+    <div class="stat"><span>🌱 지속성</span><b id="statSustain">0</b></div>
+    <div class="stat"><span>🤝 주민 배려</span><b id="statCare">0</b></div>
+    <div class="stat"><span>🔍 원인 해결력</span><b id="statCause">0</b></div>
+  </section>
+
+  <main>
+    <section id="mapScreen" class="screen active">
+      <div class="intro-card">
+        <div>
+          <span class="pill">마을 의뢰 5개</span>
+          <h2>원하는 곳부터 골라 해결해 보세요.</h2>
+          <p>미니게임으로 문제를 체험한 뒤, 해결방법을 고르면 결과와 능력치가 달라집니다.</p>
+        </div>
+        <div id="progressText" class="progress-text">0 / 5 완료</div>
+      </div>
+
+      <div id="map" class="map">
+        <div class="map-water"></div>
+        <div class="road road-a"></div>
+        <div class="road road-b"></div>
+        <div class="hill hill-a"></div>
+        <div class="hill hill-b"></div>
+        <div id="questNodes"></div>
+        <button id="resultGate" class="result-gate locked" type="button">
+          <span>🏆</span>
+          <strong>해결사 평가서</strong>
+          <small>5개 퀘스트 완료 후 열림</small>
+        </button>
+      </div>
+
+      <div class="badge-strip">
+        <h3>획득 배지</h3>
+        <div id="badgeList" class="badges"></div>
+      </div>
+    </section>
+
+    <section id="questScreen" class="screen">
+      <button id="backToMap" class="ghost back">← 마을 지도로</button>
+      <div id="questContent"></div>
+    </section>
+
+    <section id="resultScreen" class="screen">
+      <button id="backFromResult" class="ghost back">← 마을 지도로</button>
+      <div id="resultContent"></div>
+    </section>
+  </main>
+
+  <div id="modal" class="modal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <div id="modalContent"></div>
+    </div>
+  </div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
