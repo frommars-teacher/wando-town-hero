@@ -92,8 +92,9 @@ function download(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'ap
 function resetDialog(step){const modal=$('modal');modal.classList.add('open');modal.setAttribute('aria-hidden','false');document.querySelector('main').inert=true;$('modalContent').innerHTML=`<h2 id="resetTitle">${step===1?'처음부터 시작할까요?':'정말 기록을 지울까요?'}</h2><p>${step===1?'이 기기의 진행, 점수, 배지가 초기화됩니다.':'기록을 지우면 되돌릴 수 없어요. 필요한 기록은 먼저 내려받으세요.'}</p>${button(step===1?'다음 확인':'모든 새 수업 기록 초기화','id="confirmReset"','primary')} ${button('계속 플레이하기','id="cancelReset"')} ${button('기록 내려받기','id="exportBeforeReset"')}`;const close=()=>{modal.classList.remove('open');modal.setAttribute('aria-hidden','true');document.querySelector('main').inert=false;$('resetBtn').focus();};$('confirmReset').onclick=()=>{if(step===1)return resetDialog(2);state=fresh();currentQuest=null;close();save();renderAll();showScreen('mapScreen');};$('cancelReset').onclick=close;$('exportBeforeReset').onclick=download;$('cancelReset').focus();modal.onkeydown=e=>{if(e.key==='Escape'){close();return;}if(e.key==='Tab'){const buttons=[...modal.querySelectorAll('button')],i=buttons.indexOf(document.activeElement);e.preventDefault();buttons[(i+(e.shiftKey?-1:1)+buttons.length)%buttons.length].focus();}};}
 const status=document.createElement('p');status.id='saveStatus';status.className='save-status';status.setAttribute('role','status');document.querySelector('main').prepend(status);
 $('backToMap').onclick=goMap;$('backFromResult').onclick=goMap;$('resultGate').onclick=buildResult;
-$('resetBtn').onclick=()=>{if(!confirm('이 기기의 새 수업 진행, 점수, 배지를 초기화할까요?'))return;if(!confirm('활동 기록이 사라집니다. 정말 처음부터 시작할까요?'))return;state=fresh();currentQuest=null;save();renderAll();showScreen('mapScreen');};
+$('resetBtn').onclick=()=>resetDialog(1);
 renderAll();save();if(state.active&&QUESTS.some(q=>q.id===state.active))openQuest(state.active);
+
 
 
 
