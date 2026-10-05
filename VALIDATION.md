@@ -1,5 +1,7 @@
 # 개편 및 검증 기록
 
+> 이 문서는 이전 v2의 기록입니다. 현재 그림 게임판은 `VALIDATION-v3.md`를 확인하세요.
+
 검증일: 2026-10-05. 대상: https://frommars-teacher.github.io/wando-town-hero/
 
 ## 적용한 변화
